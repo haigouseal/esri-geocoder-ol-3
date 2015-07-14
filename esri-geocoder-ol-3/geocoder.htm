@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ESRI Geocoding with OpenLayers 3 Test</title>
+<meta charset="utf-8">
+<meta name="Keywords"
+	content="geocoding, geocoder, ESRI geoservices, OpenLayers 3">
+<meta name="Description" content="ESRI GeoCoding with OpenLayers 3">
+<meta name="Author" content="Haitao Wang, www.haigou.org">
+<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+<link rel="stylesheet"
+	href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+<script
+	src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+<link rel="stylesheet"
+	href="//cdnjs.cloudflare.com/ajax/libs/ol3/3.7.0/ol.css"
+	type="text/css">
+<script src="//cdnjs.cloudflare.com/ajax/libs/ol3/3.7.0/ol.js"></script>
+<!-- ESRI GeoServices -->
+<script src="js/geoservices-js.js"></script>
+<style>
+h3 {
+	font-size: 22px;
+	margin: 5px;
+}
+
+#map {
+	min-height: 600px;
+}
+
+#input, #result, #log, #resultJSON {
+	display: block;
+	clear: both;
+}
+
+#result, #resultJSON, #log {
+	border: #ccc 1px solid;
+	min-height: 30px;
+	font-size: 0.85em;
+	padding: 5px;
+}
+
+#geocode {
+	position: relative;
+}
+
+.clear-input {
+	position: absolute;
+	right: 0;
+	font-size: 12px;
+	color: #ccc;
+	cursor: pointer;
+}
+
+.footer {
+	width: 100%;
+	background-color: #f5f5f5;
+	margin: 25px 0;
+	font-size: 12px;
+	clear: both;
+}
+
+.footer .container {
+	width: auto;
+	max-width: 680px;
+	padding: 10px 0;
+	text-align: center;
+}
+</style>
+</head>
+<body>
+	<div class="container-fluid">
+		<div class="row-fluid">
+			<div class="span12">
+				<h2>ESRI Geocoder with OpenLayers 3</h2>
+				<div class="well">
+					<p>
+					<ul>
+						<li>
+							ESRI GeoServices REST Specification White Paper (PDF):
+							<br />
+							<a
+								href="http://www.esri.com/industries/landing-pages/geoservices/geoservices"
+								target="_blank" title="ESRI GeoServices REST Specification">http://www.esri.com/industries/landing-pages/geoservices/geoservices</a>
+						</li>
+						<li>Test created in July 2015 for Eastern US Vineyards
+							Project</li>
+
+					</ul>
+					</p>
+				</div>
+			</div>
+			<div class="map col-md-6" id="map"></div>
+			<div class="col-md-6">
+				<h3>Address</h3>
+				<div id="geocode" class="form-group">
+					<label class="sr-only" for="address">Geocode Address</label>
+					<input id="address" class="geocoder-input form-control"
+						placeholder="Type address here (e.g, 620 Drillfield Drive Blacksburg VA)"></input>
+					<span id="clear-input"
+						class="clear-input btn glyphicon glyphicon-remove-circle"></span>
+				</div>
+				<div class="form-inline">
+					<button class="btn btn-primary btn-action btn-s" name="geocode">Geocode
+						it</button>
+					<!-- button class="btn btn-primary btn-action btn-s" name = "clear">Clear</button-->
+					<div class="checkbox">
+						<label>
+							<input class="checkbox" type="checkbox" id="useMapExtent" checked>
+							Use Map Extent
+							</input>
+						</label>
+					</div>
+				</div>
+				<h3>Coordination (Best Result)</h3>
+				<span class="form-control" id="result"></span>
+				<h3>JSON (All Results)</h3>
+				<textarea class="form-control" id="resultJSON" rows="12"></textarea>
+				<h3>Error Log</h3>
+				<textarea class="form-control" id="log" rows="5"></textarea>
+			</div>
+		</div>
+		<footer class="footer span12">
+			<div class="container">
+				<p class="text-muted">
+					<a href="http://www.haigou.org">www.haigou.org | 没有音乐一样跳舞</a>
+				</p>
+			</div>
+		</footer>
+	</div>
+
+	<script>
+/**
+ * Create the map
+ */
+var mapConfig = {};
+mapConfig.defaultView = {zoom: 5, center: [-78.56, 38.04]};
+mapConfig.projection = 'EPSG:3857';
+
+var resultSource = new ol.source.Vector({
+	features : []
+})
+var geocodeLayer = new ol.layer.Vector({
+	source : resultSource,
+	style : function(feature, resolution) {
+		return [ new ol.style.Style({
+			/*
+			image : new ol.style.Circle({
+				radius : 4,
+				fill : new ol.style.Fill({
+					color : 'red'
+				}),
+				stroke : new ol.style.Stroke({
+					color : 'grey'
+				}),
+			}),
+			*/
+			image: new ol.style.Icon ({
+				anchor: [0.5, 37],
+				anchorXUnits: 'fraction',
+				anchorYUnits: 'pixels',
+				opacity: 0.90,
+				src: 'img/map-marker.png'
+			}),
+			text : new ol.style.Text({
+				font : '14px Calibri,sans-serif',
+				text : feature.get("name"),
+				offsetY : 15,
+				fill : new ol.style.Fill({
+					color : 'maroon'
+				}),
+				stroke : new ol.style.Stroke({
+					color : 'white',
+					width : 4
+				}),
+			})
+		}) ];
+	}
+});
+
+
+var map = new ol.Map({
+	layers: [
+	new ol.layer.Tile({
+		source: new ol.source.OSM(),
+		opacity: 1
+	}),
+	],
+	target: 'map',
+	controls: ol.control.defaults({
+	attributionOptions: /** @type {olx.control.AttributionOptions} */ ({
+		collapsible: false
+	})
+	}),
+	view: new ol.View({
+		center: ol.proj.transform(mapConfig.defaultView.center, 'EPSG:4326', mapConfig.projection),
+		zoom: 5
+	})
+});
+//TODO: use setting popup coordination rather than adding feature
+map.addLayer(geocodeLayer);
+
+/**
+ * geocoding 
+ */
+var geocoder = new Geoservices.Geoservices({});
+
+function clearPlaces() {
+	geocodeLayer.getSource().clear(true);	
+}
+
+function findPlaces() {
+	clearPlaces();
+	var address = $("#address").val();
+	var searchFromCenter = ol.proj.transform(map.getView().getCenter(), 'EPSG:3857', 'EPSG:4326');
+	var mapBounds;
+	if ($('#useMapExtent').checked) {
+		mapBounds = ol.proj.transformExtent(map.getView().calculateExtent(map.getSize()), 'EPSG:3857', 'EPSG:4326');
+	}
+	// Setup geocode options - See
+	// http://resources.arcgis.com/en/help/arcgis-rest-api/
+	var options = {
+		text : address,
+		outFields : "Loc_name,Place_addr",
+		bbox : mapBounds ? mapBounds[0] + "," + mapBounds[1] + "," + mapBounds[2] + "," + mapBounds[3] : "",
+		location : searchFromCenter ? searchFromCenter[0] + "," + searchFromCenter[1] : "",
+		maxLocations : 5
+	};
+	console.log('options.bbox: ', options['bbox']);
+	// Call geocoder
+	//geocoder.geocode is a shortcut for calling geocoder.geocode.simple
+	geocoder.geocode(options, function (err, result){
+		if(err) {
+			$("#log").val("Error:" + err);
+			$("#result").html('');
+			$("#resultJSON").val('');
+			
+		} else {
+			console.log('result: ', result);
+			$("#result").html(result.locations[0].feature.geometry.y + ", " + result.locations[0].feature.geometry.x);
+			$("#resultJSON").val(JSON.stringify(result, null, '\t'));
+			
+			newExtent = addFeatures(result.locations);
+			console.log('newExtent', newExtent);
+			
+			console.log(newExtent);
+			map.getView().fit(newExtent, map.getSize(), {
+				padding: [5, 5, 5, 5],
+				minResolution: 5 /** See http://openlayers.org/en/v3.4.0/apidoc/ol.View.html#View */
+				});
+			//clear address
+			address = null;
+		}
+	});
+}
+
+function addFeatures(locations) {
+	var extent = map.getView().calculateExtent(map.getSize());
+	console.log('extent1', extent);
+	
+	var extent = ol.extent.createEmpty();
+	//extent = ol.proj.transformExtent(extent, 'EPSG:3857', 'EPSG:4326');
+	console.log('extent2', extent);
+	
+	for (i in locations) {
+		l = locations[i];
+
+		p = new ol.geom.Point(ol.proj.transform([l.feature.geometry.x, l.feature.geometry.y], 'EPSG:4326', 'EPSG:3857'));
+		var pExtent = p.getExtent();
+		var f = new ol.Feature({
+			geometry : p,
+			name : l.name,
+		});
+		resultSource.addFeature(f);
+		extent = ol.extent.extend(extent, pExtent);
+		console.log('extent3', extent);
+	}
+	return extent;
+}
+
+/**
+ * Setup buttons
+ */
+$(document).ready(function(){
+	$('button[name="geocode"]').click(findPlaces);
+	$('button[name="clear"]').click(function(){
+		$("#address").val('');
+	});
+
+	//display icon for clearing input field
+	//TODO: make it generic
+	var clearInput = $('.clear-input');
+	var input = clearInput.parent().find('input'); //get the closest input field
+	
+	$(input).keyup(function(){
+		$(clearInput).toggle(Boolean($(this).val()));
+	});
+	$(clearInput).toggle(Boolean($(this).val()));
+	$(clearInput).click(function(){
+		$(input).val('').focus();
+		$(this).hide();
+	});
+});
+</script>
+</body>
+</html>
