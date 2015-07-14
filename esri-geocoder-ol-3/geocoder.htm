@@ -106,9 +106,8 @@ h3 {
 					<!-- button class="btn btn-primary btn-action btn-s" name = "clear">Clear</button-->
 					<div class="checkbox">
 						<label>
-							<input class="checkbox" type="checkbox" id="useMapExtent" checked>
-							Use Map Extent
-							</input>
+							<input class="checkbox" type="checkbox" id="useMapExtent" checked>Use Map Extent</input>
+							<input class="checkbox" type="checkbox" id="expandCurrentExtent">Expand Current Extent</input>
 						</label>
 					</div>
 				</div>
@@ -130,177 +129,169 @@ h3 {
 	</div>
 
 	<script>
-/**
- * Create the map
- */
-var mapConfig = {};
-mapConfig.defaultView = {zoom: 5, center: [-78.56, 38.04]};
-mapConfig.projection = 'EPSG:3857';
-
-var resultSource = new ol.source.Vector({
-	features : []
-})
-var geocodeLayer = new ol.layer.Vector({
-	source : resultSource,
-	style : function(feature, resolution) {
-		return [ new ol.style.Style({
-			/*
-			image : new ol.style.Circle({
-				radius : 4,
-				fill : new ol.style.Fill({
-					color : 'red'
-				}),
-				stroke : new ol.style.Stroke({
-					color : 'grey'
-				}),
-			}),
-			*/
-			image: new ol.style.Icon ({
-				anchor: [0.5, 37],
-				anchorXUnits: 'fraction',
-				anchorYUnits: 'pixels',
-				opacity: 0.90,
-				src: 'img/map-marker.png'
-			}),
-			text : new ol.style.Text({
-				font : '14px Calibri,sans-serif',
-				text : feature.get("name"),
-				offsetY : 15,
-				fill : new ol.style.Fill({
-					color : 'maroon'
-				}),
-				stroke : new ol.style.Stroke({
-					color : 'white',
-					width : 4
-				}),
-			})
-		}) ];
-	}
-});
-
-
-var map = new ol.Map({
-	layers: [
-	new ol.layer.Tile({
-		source: new ol.source.OSM(),
-		opacity: 1
-	}),
-	],
-	target: 'map',
-	controls: ol.control.defaults({
-	attributionOptions: /** @type {olx.control.AttributionOptions} */ ({
-		collapsible: false
+	/**
+	 * Create the map
+	 */
+	var mapConfig = {};
+	mapConfig.defaultView = {zoom: 5, center: [-78.56, 38.04]};
+	mapConfig.projection = 'EPSG:3857';
+	
+	var resultSource = new ol.source.Vector({
+		features : []
 	})
-	}),
-	view: new ol.View({
-		center: ol.proj.transform(mapConfig.defaultView.center, 'EPSG:4326', mapConfig.projection),
-		zoom: 5
-	})
-});
-//TODO: use setting popup coordination rather than adding feature
-map.addLayer(geocodeLayer);
-
-/**
- * geocoding 
- */
-var geocoder = new Geoservices.Geoservices({});
-
-function clearPlaces() {
-	geocodeLayer.getSource().clear(true);	
-}
-
-function findPlaces() {
-	clearPlaces();
-	var address = $("#address").val();
-	var searchFromCenter = ol.proj.transform(map.getView().getCenter(), 'EPSG:3857', 'EPSG:4326');
-	var mapBounds;
-	if ($('#useMapExtent').checked) {
-		mapBounds = ol.proj.transformExtent(map.getView().calculateExtent(map.getSize()), 'EPSG:3857', 'EPSG:4326');
-	}
-	// Setup geocode options - See
-	// http://resources.arcgis.com/en/help/arcgis-rest-api/
-	var options = {
-		text : address,
-		outFields : "Loc_name,Place_addr",
-		bbox : mapBounds ? mapBounds[0] + "," + mapBounds[1] + "," + mapBounds[2] + "," + mapBounds[3] : "",
-		location : searchFromCenter ? searchFromCenter[0] + "," + searchFromCenter[1] : "",
-		maxLocations : 5
-	};
-	console.log('options.bbox: ', options['bbox']);
-	// Call geocoder
-	//geocoder.geocode is a shortcut for calling geocoder.geocode.simple
-	geocoder.geocode(options, function (err, result){
-		if(err) {
-			$("#log").val("Error:" + err);
-			$("#result").html('');
-			$("#resultJSON").val('');
-			
-		} else {
-			console.log('result: ', result);
-			$("#result").html(result.locations[0].feature.geometry.y + ", " + result.locations[0].feature.geometry.x);
-			$("#resultJSON").val(JSON.stringify(result, null, '\t'));
-			
-			newExtent = addFeatures(result.locations);
-			console.log('newExtent', newExtent);
-			
-			console.log(newExtent);
-			map.getView().fit(newExtent, map.getSize(), {
-				padding: [5, 5, 5, 5],
-				minResolution: 5 /** See http://openlayers.org/en/v3.4.0/apidoc/ol.View.html#View */
-				});
-			//clear address
-			address = null;
+	var geocodeLayer = new ol.layer.Vector({
+		source : resultSource,
+		style : function(feature, resolution) {
+			return [ new ol.style.Style({
+				image: new ol.style.Icon ({
+					anchor: [0.5, 37],
+					anchorXUnits: 'fraction',
+					anchorYUnits: 'pixels',
+					opacity: 0.85,
+					src: 'img/map-marker.png'
+				}),
+				text : new ol.style.Text({
+					font : '14px Calibri,sans-serif',
+					text : feature.get("name"),
+					offsetY : 15,
+					fill : new ol.style.Fill({
+						color : 'maroon'
+					}),
+					stroke : new ol.style.Stroke({
+						color : 'white',
+						width : 4
+					}),
+				})
+			}) ];
 		}
 	});
-}
-
-function addFeatures(locations) {
-	var extent = map.getView().calculateExtent(map.getSize());
-	console.log('extent1', extent);
 	
-	var extent = ol.extent.createEmpty();
-	//extent = ol.proj.transformExtent(extent, 'EPSG:3857', 'EPSG:4326');
-	console.log('extent2', extent);
 	
-	for (i in locations) {
-		l = locations[i];
-
-		p = new ol.geom.Point(ol.proj.transform([l.feature.geometry.x, l.feature.geometry.y], 'EPSG:4326', 'EPSG:3857'));
-		var pExtent = p.getExtent();
-		var f = new ol.Feature({
-			geometry : p,
-			name : l.name,
-		});
-		resultSource.addFeature(f);
-		extent = ol.extent.extend(extent, pExtent);
-		console.log('extent3', extent);
+	var map = new ol.Map({
+		layers: [
+		new ol.layer.Tile({
+			source: new ol.source.OSM(),
+			opacity: 1
+		}),
+		],
+		target: 'map',
+		controls: ol.control.defaults({
+		attributionOptions: /** @type {olx.control.AttributionOptions} */ ({
+			collapsible: false
+		})
+		}),
+		view: new ol.View({
+			center: ol.proj.transform(mapConfig.defaultView.center, 'EPSG:4326', mapConfig.projection),
+			zoom: 5
+		})
+	});
+	//TODO: use setting popup coordination rather than adding feature
+	map.addLayer(geocodeLayer);
+	
+	/**
+	 * geocoding 
+	 */
+	var geocoder = new Geoservices.Geoservices({});
+	
+	function clearPlaces() {
+		geocodeLayer.getSource().clear(true);	
 	}
-	return extent;
-}
-
-/**
- * Setup buttons
- */
-$(document).ready(function(){
-	$('button[name="geocode"]').click(findPlaces);
-	$('button[name="clear"]').click(function(){
-		$("#address").val('');
-	});
-
-	//display icon for clearing input field
-	//TODO: make it generic
-	var clearInput = $('.clear-input');
-	var input = clearInput.parent().find('input'); //get the closest input field
 	
-	$(input).keyup(function(){
+	function findPlaces() {
+		clearPlaces();
+		var address = $("#address").val();
+		var searchFromCenter = ol.proj.transform(map.getView().getCenter(), 'EPSG:3857', 'EPSG:4326');
+		var mapBounds;
+		if ($('#useMapExtent').checked) {
+			mapBounds = ol.proj.transformExtent(map.getView().calculateExtent(map.getSize()), 'EPSG:3857', 'EPSG:4326');
+		}
+		// Setup geocode options - See
+		// http://resources.arcgis.com/en/help/arcgis-rest-api/
+		var options = {
+			text : address,
+			outFields : "Loc_name,Place_addr",
+			bbox : mapBounds ? mapBounds[0] + "," + mapBounds[1] + "," + mapBounds[2] + "," + mapBounds[3] : "",
+			location : searchFromCenter ? searchFromCenter[0] + "," + searchFromCenter[1] : "",
+			maxLocations : 5
+		};
+		console.log('options.bbox: ', options['bbox']);
+		// Call geocoder
+		//geocoder.geocode is a shortcut for calling geocoder.geocode.simple
+		geocoder.geocode(options, function (err, result){
+			if(err) {
+				$("#log").val("Error:" + err);
+				$("#result").html('');
+				$("#resultJSON").val('');
+				
+			} else {
+				console.log('result: ', result);
+				$("#result").html(result.locations[0].feature.geometry.y + ", " + result.locations[0].feature.geometry.x);
+				$("#resultJSON").val(JSON.stringify(result, null, '\t'));
+				
+				newExtent = addFeatures(result.locations);
+				console.log('newExtent', newExtent);
+				
+				console.log(newExtent);
+				map.getView().fit(newExtent, map.getSize(), {
+					padding: [5, 5, 5, 5],
+					minResolution: 5 /** See http://openlayers.org/en/v3.4.0/apidoc/ol.View.html#View */
+					});
+				//clear address
+				address = null;
+			}
+		});
+	}
+	
+	function addFeatures(locations) {
+		//var extent = $("#expandCurrentExtent").checked ? map.getView().calculateExtent(map.getSize()) : ol.extent.createEmpty(); 
+		if ($('#expandCurrentExtent').checked) {
+			var extent = map.getView().calculateExtent(map.getSize());
+			console.log('extent1', extent);
+		} else {
+			var extent = ol.extent.createEmpty();
+			console.log('extent2', extent);
+		}
+		console.log(ol.proj.transformExtent(extent, 'EPSG:3857', 'EPSG:4326'));
+		
+		for (i in locations) {
+			l = locations[i];
+	
+			p = new ol.geom.Point(ol.proj.transform([l.feature.geometry.x, l.feature.geometry.y], 'EPSG:4326', 'EPSG:3857'));
+			var pExtent = p.getExtent();
+			var f = new ol.Feature({
+				geometry : p,
+				name : l.name,
+			});
+			resultSource.addFeature(f);
+			extent = ol.extent.extend(extent, pExtent);
+			console.log('extent3', extent);
+		}
+		return extent;
+	}
+	
+	/**
+	 * Setup buttons
+	 */
+	$(document).ready(function(){
+		$('button[name="geocode"]').click(findPlaces);
+		$('button[name="clear"]').click(function(){
+			$("#address").val('');
+		});
+	
+		//display icon for clearing input field
+		//TODO: make it generic
+		var clearInput = $('.clear-input');
+		var input = clearInput.parent().find('input'); //get the closest input field
+		
+		$(input).keyup(function(){
+			$(clearInput).toggle(Boolean($(this).val()));
+		});
 		$(clearInput).toggle(Boolean($(this).val()));
+		$(clearInput).click(function(){
+			$(input).val('').focus();
+			$(this).hide();
+		});
 	});
-	$(clearInput).toggle(Boolean($(this).val()));
-	$(clearInput).click(function(){
-		$(input).val('').focus();
-		$(this).hide();
-	});
-});
-</script>
+	</script>
 </body>
 </html>
